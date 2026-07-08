@@ -2,50 +2,63 @@ import { useEffect, useRef } from 'react'
 import { useLocalStorage } from './useLocalStorage'
 import { fetchAppData, pushAppData } from '../services/appDataService'
 
-function resolveInitial<T>(initialValue: T | (() => T)): T {
-  return initialValue instanceof Function ? initialValue() : initialValue
-}
-
-function isEmpty<T>(value: T, initial: T): boolean {
+function isEmpty<T>(value: T): boolean {
   if (Array.isArray(value)) return value.length === 0
-  return JSON.stringify(value) === JSON.stringify(initial)
+  return value === null || value === undefined
 }
 
 /**
- * Same API as useLocalStorage, but backed by the server (server/app-data.json)
- * so the same data shows up across browsers/devices instead of being stuck
- * in whichever browser tab you happened to use.
+ * Same API as useLocalStorage, but backed by the server (Redis in
+ * production — see server/lib/kvStore.js) so the same data shows up across
+ * browsers/devices instead of being stuck in whichever one you happened to
+ * use.
  *
- * Sync strategy is deliberately "local wins if it has anything in it":
- *  - If this browser's local copy is non-empty, keep it and push it to the
- *    server (local is authoritative — never silently overwritten by
- *    whatever's on the server, which could be stale or from another device).
- *  - Only pull from the server when local is empty/still-default, e.g. the
- *    first time you open the app in a new browser or after clearing storage.
- *
- * Renders instantly from the local cache either way; the server round-trip
- * happens in the background and never blocks the UI.
+ * The server is the source of truth across devices — local storage is just
+ * a fast-render cache:
+ *  - Renders instantly from whatever's cached locally (no loading flash).
+ *  - On mount, and again whenever this tab regains focus/visibility, it
+ *    fetches the server's copy and adopts it if non-empty — that's what
+ *    actually picks up edits made on another device. If the server is
+ *    unreachable or has nothing saved yet, the local value is left alone.
+ *  - Any local change pushes to the server (debounced) so the next device
+ *    to load or refocus picks it up in turn.
  */
 export function useServerStorage<T>(key: string, initialValue: T | (() => T)) {
   const [value, setValue] = useLocalStorage<T>(key, initialValue)
   const hydrated = useRef(false)
-  const initialRef = useRef(resolveInitial(initialValue))
+  const valueRef = useRef(value)
+  valueRef.current = value
 
   useEffect(() => {
     let cancelled = false
-    if (isEmpty(value, initialRef.current)) {
+
+    function pull() {
       fetchAppData<T>(key).then((serverValue) => {
-        if (!cancelled && serverValue !== null && !isEmpty(serverValue, initialRef.current)) {
+        if (cancelled) return
+        if (serverValue !== null && !isEmpty(serverValue)) {
           setValue(serverValue)
         }
         hydrated.current = true
       })
-    } else {
-      hydrated.current = true
-      pushAppData(key, value)
     }
+
+    pull()
+
+    // Separate listeners rather than one shared handler gated on
+    // visibilityState: "focus" already means the window is active, and
+    // gating it behind document.visibilityState too is redundant at best —
+    // some embedding/automation contexts report focus without visibility
+    // ever flipping to "visible", which would silently break this path.
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') pull()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('focus', pull)
+
     return () => {
       cancelled = true
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('focus', pull)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
