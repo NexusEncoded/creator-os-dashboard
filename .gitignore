@@ -7,3 +7,5 @@ dist-ssr
 server/.env
 server/tokens.json
 server/app-data.json
+server/local-kv-store.json
+*.tsbuildinfo
