@@ -4,7 +4,10 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8
 
 export async function getConnectionStatus(): Promise<ConnectionStatus | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/status`, { signal: AbortSignal.timeout(3000) })
+    // Free-tier hosts (e.g. Render) spin the backend down after idle
+    // periods — the first request after that can take 15-30s to wake it
+    // back up, so this needs real headroom rather than a snappy-UI timeout.
+    const res = await fetch(`${API_BASE}/api/status`, { signal: AbortSignal.timeout(20000) })
     if (!res.ok) return null
     return (await res.json()) as ConnectionStatus
   } catch {
