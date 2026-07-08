@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #262c38;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #333b4a;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@layer utilities {
+  .transition-smooth {
+    transition-property: color, background-color, border-color, transform, opacity, box-shadow;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 200ms;
+  }
+}
+
+/* Light mode overrides. Scoped to a single ancestor class so the rest of
+   the app can keep using the dark palette tokens without dark:/light:
+   variants sprinkled through every component. */
+html.light body {
+  background-color: #f7f8fa;
+  color: #0d0f14;
+}
+html.light .bg-base-bg {
+  background-color: #f7f8fa;
+}
+html.light .bg-base-surface {
+  background-color: #ffffff;
+}
+html.light .bg-base-surface2 {
+  background-color: #eef0f4;
+}
+html.light .border-base-border {
+  border-color: #e2e5eb;
+}
+html.light .text-white {
+  color: #0d0f14;
+}
+html.light .text-gray-100 {
+  color: #111827;
+}
+html.light .text-gray-200 {
+  color: #1f2937;
+}
+html.light .text-gray-300 {
+  color: #374151;
+}
+html.light .text-gray-400 {
+  color: #57606f;
+}
+html.light .text-gray-500 {
+  color: #6b7280;
+}
+html.light .text-gray-600 {
+  color: #6b7280;
+}
