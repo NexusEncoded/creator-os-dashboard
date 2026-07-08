@@ -52,11 +52,14 @@ function resolveSlot(platformEntry, requestedSlot) {
 }
 
 // Apify-backed platforms (tiktok/instagram) take ~5-15s per call and cost
-// real money per run, so they still need a real cache window — just
-// shorter than the original 10 minutes. OAuth platforms are fast and free,
-// so they're cached only briefly, mainly to keep repeat page loads within
-// the same few seconds from re-hitting Twitch/YouTube redundantly.
-const CACHE_TTL_MS = { manual: 3 * 60 * 1000, oauth: 20 * 1000 }
+// real money per run against a limited account balance — the 3-minute
+// window this briefly used burned through real budget fast enough to start
+// getting 402s from Apify. 5 minutes still refreshes noticeably more than
+// the original 10, at roughly half the burn rate that caused that. OAuth
+// platforms are fast and free, so they're cached only briefly, mainly to
+// keep repeat page loads within the same few seconds from re-hitting
+// Twitch/YouTube redundantly.
+const CACHE_TTL_MS = { manual: 5 * 60 * 1000, oauth: 20 * 1000 }
 const metricsCache = new Map() // "platform:slot" -> { data, expiresAt }
 
 function cacheKey(name, slot) {
