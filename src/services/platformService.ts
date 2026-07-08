@@ -40,6 +40,13 @@ interface SlotMetrics {
   recentEngagement?: number
   recentPostCount?: number
   error?: string
+  // Only ever set for Apify-backed (tiktok/instagram) slots — see
+  // server/index.js. The background poll behind /api/metrics never spends
+  // Apify budget on its own, so these slots come back as either the last
+  // real fetch (marked stale) or never-yet-fetched, instead of always fresh.
+  notFetched?: boolean
+  stale?: boolean
+  lastFetchedAt?: number
 }
 
 interface BackendMetricsResponse {
@@ -103,9 +110,15 @@ function applySlot(
   slot: SlotMetrics | undefined,
   goal: number,
   views?: ViewsOverride,
+  isManualRefresh = false,
 ): PlatformMetric {
   if (!slot?.connected) return base
-  return applyLive(base, slot.followers ?? slot.subscribers, slot.error, goal, undefined, views)
+  if (slot.notFetched) return { ...base, isLiveData: false, notFetched: true, isManualRefresh }
+  const withLive = applyLive(base, slot.followers ?? slot.subscribers, slot.error, goal, undefined, views)
+  if (isManualRefresh) {
+    return { ...withLive, isManualRefresh, ...(slot.stale ? { stale: true, lastFetchedAt: slot.lastFetchedAt } : {}) }
+  }
+  return withLive
 }
 
 // Real week-over-week growth needs a time series, and a single live API call
@@ -200,7 +213,7 @@ export async function getPlatformMetrics(): Promise<PlatformMetric[]> {
           slot?.recentViews !== undefined
             ? { value: slot.recentViews, label: `views (last ${slot.recentVideoCount ?? 10} posts)` }
             : undefined
-        return applySlot(metric, slot, goal, views)
+        return applySlot(metric, slot, goal, views, true)
       }
       case 'main-instagram':
       case 'clips-instagram': {
@@ -209,7 +222,7 @@ export async function getPlatformMetrics(): Promise<PlatformMetric[]> {
           slot?.recentEngagement !== undefined
             ? { value: slot.recentEngagement, label: `likes+comments (last ${slot.recentPostCount ?? 12} posts)` }
             : undefined
-        return applySlot(metric, slot, goal, views)
+        return applySlot(metric, slot, goal, views, true)
       }
       default:
         return metric
@@ -223,6 +236,52 @@ export async function getPlatformMetrics(): Promise<PlatformMetric[]> {
     if (!g) return { ...m, weeklyGrowth: 0, weeklyGrowthPct: 0, hasGrowthHistory: false }
     return { ...m, weeklyGrowth: g.delta, weeklyGrowthPct: g.pct, hasGrowthHistory: true }
   })
+}
+
+const MANUAL_PLATFORM_MAP: Partial<Record<string, { platform: string; slot: string }>> = {
+  'main-tiktok': { platform: 'tiktok', slot: 'main' },
+  'clips-tiktok': { platform: 'tiktok', slot: 'clips' },
+  'main-instagram': { platform: 'instagram', slot: 'main' },
+  'clips-instagram': { platform: 'instagram', slot: 'clips' },
+}
+
+// Explicitly triggers a real (paid) Apify scrape for one TikTok/Instagram
+// slot and returns its updated metric — the only path that spends Apify
+// budget for these platforms now that the background poll doesn't. Pass in
+// the current metrics list so an unrelated platform's real weekly-growth
+// numbers aren't recomputed against a stale snapshot.
+export async function refreshManualPlatform(id: string, currentMetrics: PlatformMetric[]): Promise<PlatformMetric | null> {
+  const target = MANUAL_PLATFORM_MAP[id]
+  const base = PLATFORM_METRICS.find((m) => m.id === id)
+  if (!target || !base) return null
+
+  try {
+    const res = await fetch(`${API_BASE}/api/metrics/${target.platform}?slot=${target.slot}`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(20000),
+    })
+    if (!res.ok) return null
+    const slot = (await res.json()) as SlotMetrics
+    const goals = getGoals()
+    const goal = goals[base.id] ?? base.goal
+    const views =
+      slot.recentViews !== undefined
+        ? { value: slot.recentViews, label: `views (last ${slot.recentVideoCount ?? 10} posts)` }
+        : slot.recentEngagement !== undefined
+          ? { value: slot.recentEngagement, label: `likes+comments (last ${slot.recentPostCount ?? 12} posts)` }
+          : undefined
+    let updated = applySlot(base, slot, goal, views, true)
+
+    if (updated.isLiveData) {
+      const growth = await recordAndDiffGrowth(currentMetrics.map((m) => (m.id === id ? updated : m)))
+      const g = growth.get(id)
+      updated = g ? { ...updated, weeklyGrowth: g.delta, weeklyGrowthPct: g.pct, hasGrowthHistory: true } : updated
+    }
+
+    return updated
+  } catch {
+    return null
+  }
 }
 
 export function getPlatformMetricsSync(): PlatformMetric[] {

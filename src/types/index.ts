@@ -30,6 +30,14 @@ export interface PlatformMetric {
   liveNote?: string
   subscriberCount?: number
   hasGrowthHistory?: boolean
+  // Apify-backed platforms (TikTok/Instagram) only refresh on explicit
+  // request now (see server/index.js) — these describe that state so the
+  // UI can show "not fetched yet" or "as of X ago" instead of pretending
+  // it's live.
+  notFetched?: boolean
+  stale?: boolean
+  lastFetchedAt?: number
+  isManualRefresh?: boolean
 }
 
 export type BackendPlatform = 'twitch' | 'youtube' | 'tiktok' | 'instagram'

@@ -3,7 +3,7 @@ import { PageHeader } from '../components/ui/PageHeader'
 import { Card } from '../components/ui/Card'
 import { PlatformCard } from '../components/PlatformCard'
 import { QuotaTracker } from '../components/QuotaTracker'
-import { getPlatformMetrics, getPlatformMetricsSync } from '../services/platformService'
+import { getPlatformMetrics, getPlatformMetricsSync, refreshManualPlatform } from '../services/platformService'
 import { buildFocusActions } from '../services/growthService'
 import { useServerStorage } from '../hooks/useServerStorage'
 import { QUOTAS_STORAGE_KEY, DEFAULT_QUOTAS, type Quota } from '../services/quotaService'
@@ -20,6 +20,7 @@ export function Dashboard() {
   // Renders instantly from mock data, then quietly upgrades any connected
   // platform's card to live numbers once the backend responds.
   const [metrics, setMetrics] = useState(() => getPlatformMetricsSync())
+  const [refreshingId, setRefreshingId] = useState<string | null>(null)
   const [entries] = useServerStorage<CalendarEntry[]>('creator-os-calendar-v1', [])
   const [quotas] = useServerStorage<Record<PlatformId, Quota>>(QUOTAS_STORAGE_KEY, DEFAULT_QUOTAS)
   const anchor = useMemo(() => new Date(), [])
@@ -33,6 +34,13 @@ export function Dashboard() {
       cancelled = true
     }
   }, [])
+
+  async function handleRefresh(id: string) {
+    setRefreshingId(id)
+    const updated = await refreshManualPlatform(id, metrics)
+    if (updated) setMetrics((prev) => prev.map((m) => (m.id === id ? updated : m)))
+    setRefreshingId(null)
+  }
 
   const mainMetrics = metrics.filter((m) => m.lane === 'main')
   const clipsMetrics = metrics.filter((m) => m.lane === 'clips')
@@ -86,7 +94,12 @@ export function Dashboard() {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {mainMetrics.map((m) => (
-            <PlatformCard key={m.id} metric={m} />
+            <PlatformCard
+              key={m.id}
+              metric={m}
+              onRefresh={() => handleRefresh(m.id)}
+              refreshing={refreshingId === m.id}
+            />
           ))}
         </div>
       </section>
@@ -97,7 +110,12 @@ export function Dashboard() {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {clipsMetrics.map((m) => (
-            <PlatformCard key={m.id} metric={m} />
+            <PlatformCard
+              key={m.id}
+              metric={m}
+              onRefresh={() => handleRefresh(m.id)}
+              refreshing={refreshingId === m.id}
+            />
           ))}
         </div>
       </section>

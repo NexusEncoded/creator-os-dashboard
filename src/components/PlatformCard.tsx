@@ -1,5 +1,5 @@
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts'
-import { ArrowUpRight, ArrowDownRight, Radio, AlertCircle } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, Radio, AlertCircle, RefreshCw, CloudDownload } from 'lucide-react'
 import type { PlatformMetric } from '../types'
 import { Card } from './ui/Card'
 import { ProgressBar } from './ui/ProgressBar'
@@ -12,44 +12,129 @@ function formatNumber(n: number): string {
   return n.toString()
 }
 
-export function PlatformCard({ metric }: { metric: PlatformMetric }) {
+function timeAgo(ms: number): string {
+  const diff = Date.now() - ms
+  const mins = Math.round(diff / 60_000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
+}
+
+interface PlatformCardProps {
+  metric: PlatformMetric
+  onRefresh?: () => void
+  refreshing?: boolean
+}
+
+export function PlatformCard({ metric, onRefresh, refreshing }: PlatformCardProps) {
   const pctToGoal = Math.min(100, Math.round((metric.followers / metric.goal) * 100))
   const isGrowthPositive = metric.weeklyGrowth >= 0
   const growthPending = metric.isLiveData && metric.hasGrowthHistory === false
 
+  const header = (
+    <div className="flex items-start justify-between">
+      <div className="flex items-center gap-2.5">
+        <div
+          className="w-9 h-9 rounded-lg flex items-center justify-center"
+          style={{ backgroundColor: `${metric.brandColor}22` }}
+        >
+          <PlatformIcon platform={metric.id} color={metric.brandColor} size={18} />
+        </div>
+        <div>
+          <p className="font-semibold text-white leading-tight flex items-center gap-1.5">
+            {metric.name}
+            {metric.isLiveData && !metric.isManualRefresh && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-status-good/15 text-status-good">
+                LIVE
+              </span>
+            )}
+          </p>
+          <p className="text-xs text-gray-500 capitalize">{metric.lane} brand</p>
+        </div>
+      </div>
+      <StatusBadge status={metric.status} />
+    </div>
+  )
+
+  if (metric.notFetched) {
+    return (
+      <Card className="p-5 flex flex-col gap-4">
+        {header}
+        <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
+          <CloudDownload size={28} className="text-gray-600" />
+          <div>
+            <p className="text-sm font-medium text-gray-200">Not fetched yet</p>
+            <p className="text-xs text-gray-500 mt-0.5 max-w-[16rem]">
+              Scraping this costs real Apify usage, so it only runs when you ask — click refresh to pull real numbers.
+            </p>
+          </div>
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/15 text-accent hover:bg-accent/25 transition-smooth disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+            {refreshing ? 'Fetching...' : 'Fetch now'}
+          </button>
+        </div>
+      </Card>
+    )
+  }
+
+  // A failed live fetch leaves no real data to show — showing the mock
+  // follower count/chart/etc. right next to an error message would look
+  // like real data that just happens to have a warning attached, when
+  // there's actually nothing behind it at all.
+  if (metric.liveError && !metric.isLiveData) {
+    return (
+      <Card className="p-5 flex flex-col gap-4">
+        {header}
+        <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
+          <AlertCircle size={28} className="text-status-watch" />
+          <div>
+            <p className="text-sm font-medium text-gray-200">Fetch failed</p>
+            <p className="text-xs text-gray-500 mt-0.5 max-w-[18rem] break-words">{metric.liveError}</p>
+          </div>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/15 text-accent hover:bg-accent/25 transition-smooth disabled:opacity-50"
+            >
+              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? 'Retrying...' : 'Retry'}
+            </button>
+          )}
+        </div>
+      </Card>
+    )
+  }
+
   return (
     <Card className="p-5 flex flex-col gap-4">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-9 h-9 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: `${metric.brandColor}22` }}
+      {header}
+
+      {metric.isManualRefresh && metric.isLiveData && (
+        <div className="flex items-center justify-between -mt-2">
+          <p className="text-[11px] text-gray-500">
+            {metric.stale && metric.lastFetchedAt ? `Last fetched ${timeAgo(metric.lastFetchedAt)}` : 'Fetched just now'}
+          </p>
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-accent transition-smooth disabled:opacity-50"
           >
-            <PlatformIcon platform={metric.id} color={metric.brandColor} size={18} />
-          </div>
-          <div>
-            <p className="font-semibold text-white leading-tight flex items-center gap-1.5">
-              {metric.name}
-              {metric.isLiveData && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-status-good/15 text-status-good">
-                  LIVE
-                </span>
-              )}
-            </p>
-            <p className="text-xs text-gray-500 capitalize">{metric.lane} brand</p>
-          </div>
+            <RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} />
+            {refreshing ? 'Fetching...' : 'Refresh'}
+          </button>
         </div>
-        <StatusBadge status={metric.status} />
-      </div>
+      )}
 
       {metric.liveNote && (
         <div className="flex items-center gap-1.5 text-xs text-status-bad -mt-2">
           <Radio size={12} className="animate-pulse" /> {metric.liveNote}
-        </div>
-      )}
-      {metric.liveError && (
-        <div className="flex items-start gap-1.5 text-xs text-status-watch -mt-2">
-          <AlertCircle size={12} className="flex-shrink-0 mt-0.5" /> {metric.liveError}
         </div>
       )}
 

@@ -87,7 +87,14 @@ app.get('/api/status', async (_req, res) => {
   res.json(status)
 })
 
-async function getMetricsFor(name, mod, slot, platformType) {
+// Apify-backed platforms (type "manual") cost real money per call against a
+// limited account balance, so the automatic background poll behind
+// /api/metrics — hit on every page load — never triggers a fresh scrape for
+// them on its own. It only ever serves whatever was last actually fetched,
+// however old, plus a `stale`/`notFetched` flag so the UI can show that and
+// offer an explicit refresh. Only /api/metrics/:platform (POST — see below)
+// actually spends anything, and only because the user asked for it right now.
+async function getMetricsFor(name, mod, slot, platformType, { forceFetch = false } = {}) {
   const key = tokenKey(name, slot)
   if (!mod.isConfigured() || !(await isConnected(key))) return { connected: false }
 
@@ -95,13 +102,18 @@ async function getMetricsFor(name, mod, slot, platformType) {
   const cached = metricsCache.get(cKey)
   if (cached && Date.now() < cached.expiresAt) return cached.data
 
+  if (platformType === 'manual' && !forceFetch) {
+    if (cached) return { ...cached.data, stale: true, lastFetchedAt: cached.fetchedAt }
+    return { connected: true, notFetched: true }
+  }
+
   let result
   try {
     result = slot === 'default' ? await mod.getMetrics() : await mod.getMetrics(slot)
   } catch (err) {
     result = { connected: true, error: err.message }
   }
-  metricsCache.set(cKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS[platformType] })
+  metricsCache.set(cKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS[platformType], fetchedAt: Date.now() })
   return result
 }
 
@@ -149,12 +161,17 @@ app.get('/api/calendar.ics', async (req, res) => {
   res.send(buildIcsFeed(entries))
 })
 
-app.get('/api/metrics/:platform', async (req, res) => {
+// Explicit refresh — the only path that actually spends Apify budget for
+// "manual" (tiktok/instagram) platforms. POST, not GET, since it has a real
+// side effect (money) rather than just reading something back. OAuth
+// platforms hitting this also just get a normal fresh fetch, same as
+// before, since there's no cost concern there.
+app.post('/api/metrics/:platform', async (req, res) => {
   const entry = PLATFORMS[req.params.platform]
   if (!entry) return res.status(404).json({ error: 'Unknown platform' })
   const slot = resolveSlot(entry, req.query.slot ?? 'default')
   if (!slot) return res.status(400).json({ error: 'Unknown slot' })
-  res.json(await getMetricsFor(req.params.platform, entry.mod, slot, entry.type))
+  res.json(await getMetricsFor(req.params.platform, entry.mod, slot, entry.type, { forceFetch: true }))
 })
 
 app.post('/api/disconnect/:platform', async (req, res) => {
@@ -177,7 +194,10 @@ app.post('/api/manual/:platform', express.json(), async (req, res) => {
 
   await entry.mod.setUsername(slot, username)
   metricsCache.delete(cacheKey(req.params.platform, slot))
-  res.json(await getMetricsFor(req.params.platform, entry.mod, slot, entry.type))
+  // Force-fetch here specifically — right after connecting, the user needs
+  // to see immediately whether the username actually resolved to a real
+  // profile, not "not fetched yet, click refresh."
+  res.json(await getMetricsFor(req.params.platform, entry.mod, slot, entry.type, { forceFetch: true }))
 })
 
 app.get('/auth/:platform', (req, res) => {
