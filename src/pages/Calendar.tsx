@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus, Sparkles, CalendarDays, Check } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Sparkles, CalendarDays, Check, Trash2, X } from 'lucide-react'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Card } from '../components/ui/Card'
 import { CalendarEntryModal } from '../components/CalendarEntryModal'
 import { useServerStorage } from '../hooks/useServerStorage'
 import type { CalendarEntry, CalendarStatus } from '../types'
 import { getWeekStart } from '../data/schedule'
-import { ensureWeekSeeded, getWeekDates, toDateStr } from '../services/calendarService'
+import { clearDay, clearWeek, ensureWeekSeeded, formatTime12h, getWeekDates, toDateStr } from '../services/calendarService'
 import { RECURRING_SCHEDULE_KEY, getDefaultRecurringSchedule } from '../services/scheduleService'
 import { PLATFORM_METRICS } from '../data/platforms'
 import { getPillar } from '../data/pillars'
@@ -53,6 +53,8 @@ export function CalendarPage() {
   const [anchor, setAnchor] = useState(() => new Date())
   const [modal, setModal] = useState<{ date: string; entry: CalendarEntry | null } | null>(null)
   const [fillMessage, setFillMessage] = useState<string | null>(null)
+  const [confirmClearDay, setConfirmClearDay] = useState<string | null>(null)
+  const [confirmClearWeek, setConfirmClearWeek] = useState(false)
 
   const weekStart = useMemo(() => getWeekStart(anchor), [anchor])
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart])
@@ -88,6 +90,16 @@ export function CalendarPage() {
     setEntries((prev) =>
       prev.map((e) => (e.id === id ? { ...e, status: e.status === 'posted' ? 'planned' : 'posted' } : e)),
     )
+  }
+
+  function handleClearDay(dateStr: string) {
+    setEntries((prev) => clearDay(prev, dateStr))
+    setConfirmClearDay(null)
+  }
+
+  function handleClearWeek() {
+    setEntries((prev) => clearWeek(prev, anchor))
+    setConfirmClearWeek(false)
   }
 
   function fillWeek() {
@@ -182,6 +194,12 @@ export function CalendarPage() {
             >
               <Sparkles size={16} /> Fill Week
             </button>
+            <button
+              onClick={() => setConfirmClearWeek(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-status-bad/15 text-status-bad hover:bg-status-bad/25 transition-smooth"
+            >
+              <Trash2 size={16} /> Clear Week
+            </button>
           </div>
         }
       />
@@ -189,6 +207,29 @@ export function CalendarPage() {
       {fillMessage && (
         <div className="mb-4 px-4 py-2.5 rounded-lg bg-accent/10 border border-accent/30 text-sm text-accent">
           {fillMessage}
+        </div>
+      )}
+
+      {confirmClearWeek && (
+        <div className="mb-4 px-4 py-3 rounded-lg bg-status-bad/10 border border-status-bad/30 flex items-center justify-between gap-3">
+          <p className="text-sm text-gray-200">
+            Delete every entry in this week ({weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} –{' '}
+            {weekDates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})? This can't be undone.
+          </p>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={handleClearWeek}
+              className="px-3 py-1.5 rounded-md text-xs font-medium bg-status-bad/20 text-status-bad hover:bg-status-bad/30 transition-smooth"
+            >
+              Clear Week
+            </button>
+            <button
+              onClick={() => setConfirmClearWeek(false)}
+              className="px-3 py-1.5 rounded-md text-xs font-medium bg-base-surface2 text-gray-300 hover:bg-base-surface transition-smooth"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
@@ -228,13 +269,43 @@ export function CalendarPage() {
                     <p className="text-xs text-gray-500">{DAY_LABELS[date.getDay()]}</p>
                     <p className={`text-sm font-semibold ${isToday ? 'text-accent' : 'text-white'}`}>{date.getDate()}</p>
                   </div>
-                  <button
-                    onClick={() => setModal({ date: dateStr, entry: null })}
-                    className="p-1 rounded-md text-gray-500 hover:text-white hover:bg-base-surface2 transition-smooth"
-                  >
-                    <Plus size={16} />
-                  </button>
+                  <div className="flex items-center gap-0.5">
+                    {items.length > 0 && (
+                      <button
+                        onClick={() => setConfirmClearDay(dateStr)}
+                        title="Clear this day"
+                        className="p-1 rounded-md text-gray-500 hover:text-status-bad hover:bg-base-surface2 transition-smooth"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setModal({ date: dateStr, entry: null })}
+                      className="p-1 rounded-md text-gray-500 hover:text-white hover:bg-base-surface2 transition-smooth"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
                 </div>
+                {confirmClearDay === dateStr && (
+                  <div className="flex flex-col gap-1.5 px-2 py-2 rounded-lg bg-status-bad/10 border border-status-bad/30">
+                    <p className="text-[11px] text-gray-200">Clear all {items.length} entries for this day?</p>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleClearDay(dateStr)}
+                        className="flex-1 px-2 py-1 rounded text-[11px] font-medium bg-status-bad/20 text-status-bad hover:bg-status-bad/30 transition-smooth"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        onClick={() => setConfirmClearDay(null)}
+                        className="p-1 rounded text-gray-400 hover:text-white transition-smooth"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-col gap-1.5">
                   {items.map((item) => {
                     const isPosted = item.status === 'posted'
@@ -255,7 +326,7 @@ export function CalendarPage() {
                         </button>
                         <button onClick={() => setModal({ date: dateStr, entry: item })} className="flex-1 min-w-0 text-left">
                           <div className="flex items-center justify-between gap-1">
-                            <span className="font-medium text-gray-200">{item.time}</span>
+                            <span className="font-medium text-gray-200">{formatTime12h(item.time)}</span>
                             <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[item.status]}`} />
                           </div>
                           <p className={`truncate ${isPosted ? 'text-gray-500 line-through' : 'text-gray-300'}`}>{item.title}</p>

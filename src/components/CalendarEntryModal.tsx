@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { X, Trash2 } from 'lucide-react'
+import { X, Trash2, Lightbulb } from 'lucide-react'
 import type { CalendarEntry, CalendarStatus, ContentPillarId, PlatformId } from '../types'
 import { PLATFORM_METRICS } from '../data/platforms'
 import { CONTENT_PILLARS } from '../data/pillars'
+import { PILLAR_IDEA_BANK } from '../data/ideas'
 
 interface Props {
   initialDate: string
@@ -23,6 +24,7 @@ export function CalendarEntryModal({ initialDate, entry, onClose, onSave, onDele
   const [title, setTitle] = useState(entry?.title ?? '')
   const [status, setStatus] = useState<CalendarStatus>(entry?.status ?? 'planned')
   const [notes, setNotes] = useState(entry?.notes ?? '')
+  const ideasForPillar = PILLAR_IDEA_BANK[pillar] ?? []
 
   function handleSave() {
     if (!title.trim()) return
@@ -107,6 +109,33 @@ export function CalendarEntryModal({ initialDate, entry, onClose, onSave, onDele
               </select>
             </div>
           </div>
+
+          {!entry && ideasForPillar.length > 0 && (
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-gray-400 mb-1.5">
+                <Lightbulb size={12} /> Pick from ideas for this pillar
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {ideasForPillar.map((idea) => (
+                  <button
+                    key={idea.title}
+                    onClick={() => {
+                      setTitle(idea.title)
+                      setPlatform(idea.platform)
+                      setContentType(idea.format)
+                    }}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs text-left transition-smooth ${
+                      title === idea.title
+                        ? 'bg-accent/20 text-accent border border-accent/40'
+                        : 'bg-base-surface2 text-gray-300 border border-transparent hover:border-base-border'
+                    }`}
+                  >
+                    {idea.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

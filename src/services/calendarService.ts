@@ -35,6 +35,31 @@ export function entriesForDate(all: CalendarEntry[], dateStr: string): CalendarE
   return all.filter((e) => e.date === dateStr).sort((a, b) => a.time.localeCompare(b.time))
 }
 
+// CalendarEntry.time is stored as 24h "HH:MM" (sorts correctly as a plain
+// string, and matches the native <input type="time"> format) — this is
+// purely for display.
+export function formatTime12h(time24: string): string {
+  const [hStr, mStr] = time24.split(':')
+  const h = Number(hStr)
+  const period = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${mStr} ${period}`
+}
+
+// Removes every entry on a single date — used by the Calendar page's
+// per-day clear action. No "protect real activity" guardrail here, unlike
+// resetWeeksToDefault: this is an explicit, single-day action the user is
+// looking directly at, backed by its own confirm step in the UI.
+export function clearDay(all: CalendarEntry[], dateStr: string): CalendarEntry[] {
+  return all.filter((e) => e.date !== dateStr)
+}
+
+// Removes every entry in the Sun-Sat week containing `anchor`.
+export function clearWeek(all: CalendarEntry[], anchor: Date): CalendarEntry[] {
+  const weekDateStrs = new Set(getWeekDates(getWeekStart(anchor)).map(toDateStr))
+  return all.filter((e) => !weekDateStrs.has(e.date))
+}
+
 // Parses a "YYYY-MM-DD" CalendarEntry.date as a local date. `new Date(str)`
 // parses date-only strings as UTC midnight, which can land on the wrong
 // local day near a timezone boundary — this avoids that.

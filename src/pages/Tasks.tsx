@@ -13,7 +13,7 @@ import {
   combinedCompletionPct,
   type CustomTask,
 } from '../services/taskService'
-import { toDateStr, ensureWeekSeeded } from '../services/calendarService'
+import { toDateStr, ensureWeekSeeded, formatTime12h } from '../services/calendarService'
 import { RECURRING_SCHEDULE_KEY, getDefaultRecurringSchedule } from '../services/scheduleService'
 import { getWeekStart } from '../data/schedule'
 import type { ScheduleTemplate } from '../data/schedule'
@@ -103,7 +103,7 @@ function ContentChecklistCard({
             <button onClick={() => onEdit(item)} className="flex-1 min-w-0 text-left">
               <p className={`text-sm ${done ? 'text-gray-500 line-through' : 'text-gray-100'}`}>{item.title}</p>
               <p className="text-xs text-gray-500 truncate">
-                {item.time} · {pillar?.name ?? item.pillar} · {item.contentType}
+                {formatTime12h(item.time)} · {pillar?.name ?? item.pillar} · {item.contentType}
               </p>
             </button>
             <span className="text-gray-500 flex-shrink-0">
