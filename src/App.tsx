@@ -1,9 +1,8 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from './components/layout/Layout'
 import { useTheme } from './hooks/useTheme'
 import { Dashboard } from './pages/Dashboard'
 import { CalendarPage } from './pages/Calendar'
-import { Tasks } from './pages/Tasks'
 import { Ideas } from './pages/Ideas'
 import { Pillars } from './pages/Pillars'
 import { Growth } from './pages/Growth'
@@ -18,7 +17,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="/tasks" element={<Tasks />} />
+        {/* Tasks got folded into Calendar's Day view — redirect old links/bookmarks. */}
+        <Route path="/tasks" element={<Navigate to="/calendar" replace />} />
         <Route path="/ideas" element={<Ideas />} />
         <Route path="/pillars" element={<Pillars />} />
         <Route path="/growth" element={<Growth />} />
