@@ -10,7 +10,10 @@ export interface TaskTemplate {
 // a scheduled post (Post to Main TikTok, Go live on Twitch, etc.) is now
 // pulled directly from the Calendar as a real content item instead of a
 // generic duplicate label. See services/taskService.ts contentTasksForDate.
-export const DAILY_TASKS: TaskTemplate[] = [{ id: 'daily-engagement', label: 'Engage with comments for 15 min' }]
+export const DAILY_TASKS: TaskTemplate[] = [
+  { id: 'daily-engagement', label: 'Engage with comments for 15 min' },
+  { id: 'daily-upload-clips', label: 'Upload today\'s clip(s) to Clips TikTok/Instagram', platform: 'clips-tiktok' },
+]
 
 // dayOfWeek: 0 = Sunday ... 6 = Saturday
 export const DAY_SPECIFIC_TASKS: Record<number, TaskTemplate[]> = {

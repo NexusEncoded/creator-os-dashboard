@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Card } from '../components/ui/Card'
 import { PlatformCard } from '../components/PlatformCard'
 import { QuotaTracker } from '../components/QuotaTracker'
 import { getPlatformMetrics, getPlatformMetricsSync, refreshManualPlatform } from '../services/platformService'
 import { buildFocusActions } from '../services/growthService'
+import { buildChecklist, type CustomTask } from '../services/taskService'
+import { toDateStr } from '../services/calendarService'
 import { useServerStorage } from '../hooks/useServerStorage'
 import { QUOTAS_STORAGE_KEY, DEFAULT_QUOTAS, type Quota } from '../services/quotaService'
-import { Flame, Users, TrendingUp, CircleCheck } from 'lucide-react'
+import { PlatformIcon } from '../components/ui/PlatformIcon'
+import { Flame, Users, TrendingUp, CircleCheck, Check, ArrowRight } from 'lucide-react'
 import type { CalendarEntry, PlatformId } from '../types'
 
 function formatNumber(n: number): string {
@@ -23,7 +27,26 @@ export function Dashboard() {
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
   const [entries] = useServerStorage<CalendarEntry[]>('creator-os-calendar-v1', [])
   const [quotas] = useServerStorage<Record<PlatformId, Quota>>(QUOTAS_STORAGE_KEY, DEFAULT_QUOTAS)
+  const [customTasks] = useServerStorage<CustomTask[]>('creator-os-custom-tasks', [])
+  const [completions, setCompletions] = useServerStorage<Record<string, Record<string, boolean>>>(
+    'creator-os-task-completions',
+    {},
+  )
   const anchor = useMemo(() => new Date(), [])
+  const todayStr = toDateStr(anchor)
+  const todayChecklist = useMemo(() => {
+    const items = buildChecklist(todayStr, anchor.getDay(), customTasks)
+    const dayCompletions = completions[todayStr] ?? {}
+    return items.map((item) => ({ ...item, done: dayCompletions[item.id] ?? false }))
+  }, [todayStr, anchor, customTasks, completions])
+
+  function toggleTodayTask(taskId: string) {
+    setCompletions((prev) => {
+      const dayMap = { ...(prev[todayStr] ?? {}) }
+      dayMap[taskId] = !dayMap[taskId]
+      return { ...prev, [todayStr]: dayMap }
+    })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -102,6 +125,40 @@ export function Dashboard() {
           <p className="text-sm font-semibold text-white leading-snug">{topFocus.action}</p>
         </Card>
       </div>
+
+      {todayChecklist.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">Today's Tasks</h2>
+            <Link to="/calendar" className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-smooth">
+              Full day view <ArrowRight size={12} />
+            </Link>
+          </div>
+          <Card className="divide-y divide-base-border">
+            {todayChecklist.map((item) => (
+              <div key={item.id} className="flex items-center gap-3 px-5 py-3.5">
+                <button
+                  onClick={() => toggleTodayTask(item.id)}
+                  className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-smooth ${
+                    item.done ? 'bg-accent border-accent' : 'border-gray-600'
+                  }`}
+                >
+                  {item.done && <Check size={14} className="text-white" />}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm ${item.done ? 'text-gray-500 line-through' : 'text-gray-100'}`}>{item.label}</p>
+                  {item.custom && <p className="text-[11px] text-gray-500">Custom task</p>}
+                </div>
+                {item.platform && (
+                  <span className="text-gray-500 flex-shrink-0">
+                    <PlatformIcon platform={item.platform} size={16} />
+                  </span>
+                )}
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
 
       <div className="mb-6">
         <QuotaTracker />
