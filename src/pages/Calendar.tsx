@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft,
   ChevronRight,
@@ -200,11 +201,27 @@ export function CalendarPage() {
   const [customExtraTitle, setCustomExtraTitle] = useState('')
   const [newTaskLabel, setNewTaskLabel] = useState('')
   const [newTaskRecurrence, setNewTaskRecurrence] = useState<'once' | 'daily' | 'weekly'>('once')
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const dateStr = toDateStr(anchor)
   const dayOfWeek = anchor.getDay()
   const weekStart = useMemo(() => getWeekStart(anchor), [anchor])
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart])
+
+  // Arriving from Pillars' "Plan this pillar" link — land on Day view with
+  // that pillar pre-picked in the quick-add section instead of making
+  // someone re-select it, then drop the param so it doesn't stick around.
+  useEffect(() => {
+    const paramPillar = searchParams.get('pillar')
+    if (!paramPillar) return
+    if (CONTENT_PILLARS.some((p) => p.id === paramPillar)) {
+      setQuickPillar(paramPillar as ContentPillarId)
+      setViewMode('day')
+      setTimeout(() => document.getElementById('add-extra')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+    }
+    setSearchParams({}, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (viewMode === 'month') {
@@ -567,7 +584,7 @@ export function CalendarPage() {
             )}
           </div>
 
-          <Card className="p-5 mb-6">
+          <Card id="add-extra" className="p-5 mb-6">
             <p className="flex items-center gap-1.5 text-sm font-semibold text-white mb-3">
               <Lightbulb size={15} className="text-accent" /> Add something extra
             </p>
