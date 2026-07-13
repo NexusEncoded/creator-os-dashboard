@@ -25,6 +25,21 @@ const STRATEGY_NOTES: Partial<Record<PlatformId, string>> = {
   'live-youtube': 'Hold off on a fixed live schedule here — use it as a VOD/recap archive until Twitch is consistently past its goal.',
 }
 
+// Ranked so the most actionable thing genuinely sorts first — a real
+// posting shortfall (tracked from Calendar, so it's meaningful regardless
+// of whether the platform's follower data has been fetched) always beats
+// "connect/refresh this platform" nudges, which in turn beat general
+// maintain-the-pace strategy notes. Without this, buildFocusActions()[0]
+// (what the Dashboard shows as "This Week's #1 Focus") just reflected
+// whichever platform happened to be first in PLATFORM_METRICS — always
+// Main TikTok, whether or not it was actually the most urgent thing.
+function priorityFor(m: PlatformMetric, remaining: number): number {
+  if (remaining > 0) return 0
+  if (m.notFetched) return 1
+  if (!m.isLiveData) return 2
+  return 3
+}
+
 export function buildFocusActions(
   metrics: PlatformMetric[],
   entries: CalendarEntry[],
@@ -33,48 +48,52 @@ export function buildFocusActions(
 ): FocusAction[] {
   const postedThisWeek = countPostedThisWeek(entries, anchor)
 
-  return metrics.map((m) => {
+  const ranked = metrics.map((m) => {
     const quota = quotas[m.id] ?? DEFAULT_QUOTAS[m.id]
     const posted = postedThisWeek[m.id] ?? 0
     const strategy = STRATEGY_NOTES[m.id]
+    const remaining = quota.minimum - posted
+    const priority = priorityFor(m, remaining)
 
-    if (m.notFetched) {
-      return {
+    let action: FocusAction
+    if (priority === 0) {
+      action = {
+        platform: m.id,
+        action: `Post ${remaining} more time${remaining === 1 ? '' : 's'} on ${m.name} before the week resets.`,
+        reason: `${posted}/${quota.goal} posted this week — below the ${quota.minimum} floor.${strategy ? ` ${strategy}` : ''}`,
+      }
+    } else if (priority === 1) {
+      action = {
         platform: m.id,
         action: strategy ?? `Click "Fetch now" on ${m.name}'s Dashboard card to pull real numbers.`,
         reason: strategy
           ? `Connected, but not fetched yet — this is workflow strategy rather than a signal from your real ${m.name} account.`
           : `Connected, but not fetched yet — this card is still showing mock data until you refresh it.`,
       }
-    }
-
-    if (!m.isLiveData) {
-      return {
+    } else if (priority === 2) {
+      action = {
         platform: m.id,
         action: strategy ?? `Connect ${m.name} in Settings to unlock a data-driven focus action here.`,
         reason: strategy
           ? `Not connected yet, so this is workflow strategy rather than a signal from your real ${m.name} account.`
           : `Not connected yet — this card is still showing mock data.`,
       }
-    }
-
-    if (posted < quota.minimum) {
-      const remaining = quota.minimum - posted
-      return {
+    } else {
+      action = {
         platform: m.id,
-        action: `Post ${remaining} more time${remaining === 1 ? '' : 's'} on ${m.name} before the week resets.`,
-        reason: `${posted}/${quota.goal} posted this week — below the ${quota.minimum} floor.${strategy ? ` ${strategy}` : ''}`,
+        action: strategy ?? `Keep the current ${m.name} posting rhythm going.`,
+        reason: m.hasGrowthHistory
+          ? `On pace this week (${posted}/${quota.goal} posted, ${m.weeklyGrowthPct >= 0 ? '+' : ''}${m.weeklyGrowthPct}% followers over 7 days).`
+          : `On pace this week (${posted}/${quota.goal} posted). Real weekly growth will show here once a week of follower history builds up.`,
       }
     }
 
-    return {
-      platform: m.id,
-      action: strategy ?? `Keep the current ${m.name} posting rhythm going.`,
-      reason: m.hasGrowthHistory
-        ? `On pace this week (${posted}/${quota.goal} posted, ${m.weeklyGrowthPct >= 0 ? '+' : ''}${m.weeklyGrowthPct}% followers over 7 days).`
-        : `On pace this week (${posted}/${quota.goal} posted). Real weekly growth will show here once a week of follower history builds up.`,
-    }
+    return { priority, remaining, action }
   })
+
+  return ranked
+    .sort((a, b) => a.priority - b.priority || b.remaining - a.remaining)
+    .map((r) => r.action)
 }
 
 export function buildGrowthInsights(metrics: PlatformMetric[]): GrowthInsight[] {

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts'
 import { ArrowUpRight, ArrowDownRight, Radio, AlertCircle, RefreshCw, CloudDownload } from 'lucide-react'
 import type { PlatformMetric } from '../types'
@@ -5,6 +6,14 @@ import { Card } from './ui/Card'
 import { ProgressBar } from './ui/ProgressBar'
 import { StatusBadge } from './ui/StatusBadge'
 import { PlatformIcon } from './ui/PlatformIcon'
+
+// A raw "401 Invalid Credentials" API dump doesn't tell anyone what to do —
+// this is almost always an expired/revoked OAuth token, and the fix is
+// always the same (reconnect in Settings), regardless of which platform's
+// API phrased the error differently.
+function isAuthError(message: string): boolean {
+  return /401|invalid.?credentials|unauthenticated|unauthorized/i.test(message)
+}
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -88,24 +97,52 @@ export function PlatformCard({ metric, onRefresh, refreshing }: PlatformCardProp
   // like real data that just happens to have a warning attached, when
   // there's actually nothing behind it at all.
   if (metric.liveError && !metric.isLiveData) {
+    const authError = isAuthError(metric.liveError)
+    // Retry only actually does something for Apify-backed platforms
+    // (refreshManualPlatform knows how to re-fetch those) — OAuth platforms
+    // (Twitch/YouTube) auto-fetch on every page load already, so a broken
+    // OAuth token needs reconnecting in Settings, not a "Retry" button that
+    // would silently do nothing.
     return (
       <Card className="p-5 flex flex-col gap-4">
         {header}
         <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
           <AlertCircle size={28} className="text-status-watch" />
           <div>
-            <p className="text-sm font-medium text-gray-200">Fetch failed</p>
-            <p className="text-xs text-gray-500 mt-0.5 max-w-[18rem] break-words">{metric.liveError}</p>
+            <p className="text-sm font-medium text-gray-200">
+              {authError ? 'Connection needs to be refreshed' : 'Fetch failed'}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5 max-w-[18rem]">
+              {authError
+                ? `Your ${metric.name} login has expired or been revoked — reconnect it in Settings to pull real numbers again.`
+                : metric.liveError}
+            </p>
+            {authError && (
+              <details className="mt-2 text-left">
+                <summary className="text-[11px] text-gray-600 cursor-pointer hover:text-gray-400">Show technical details</summary>
+                <p className="text-[11px] text-gray-600 mt-1 max-w-[18rem] break-words">{metric.liveError}</p>
+              </details>
+            )}
           </div>
-          {onRefresh && (
-            <button
-              onClick={onRefresh}
-              disabled={refreshing}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/15 text-accent hover:bg-accent/25 transition-smooth disabled:opacity-50"
+          {authError ? (
+            <Link
+              to="/settings"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/15 text-accent hover:bg-accent/25 transition-smooth"
             >
-              <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-              {refreshing ? 'Retrying...' : 'Retry'}
-            </button>
+              Reconnect in Settings
+            </Link>
+          ) : (
+            metric.isManualRefresh &&
+            onRefresh && (
+              <button
+                onClick={onRefresh}
+                disabled={refreshing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/15 text-accent hover:bg-accent/25 transition-smooth disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+                {refreshing ? 'Retrying...' : 'Retry'}
+              </button>
+            )
           )}
         </div>
       </Card>
