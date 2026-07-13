@@ -83,7 +83,7 @@ export function Pillars() {
     <div>
       <PageHeader
         title="Pillars & Niche Hub"
-        subtitle="Two brand lanes, ten pillars — the backbone of what gets made every week."
+        subtitle="Two brand lanes, twelve pillars — the backbone of what gets made every week."
       />
       {renderLane(
         'Main Brand — Personality / Lifestyle',

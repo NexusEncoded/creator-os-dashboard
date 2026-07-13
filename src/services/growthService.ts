@@ -1,6 +1,16 @@
 import type { CalendarEntry, FocusAction, GrowthInsight, PlatformId, PlatformMetric } from '../types'
 import { DEFAULT_QUOTAS, countPostedThisWeek, type Quota } from './quotaService'
 
+// "isLiveData" only means a real fetch has actually succeeded — Apify-backed
+// platforms (TikTok/Instagram) can be genuinely connected (a username saved)
+// but still waiting on an explicit refresh (see PlatformCard's "Fetch now"),
+// or briefly erroring. Both of those are meaningfully different from never
+// having been connected at all, and were getting flattened into the same
+// "not connected — mock data" messaging.
+function isConnectedPlatform(m: PlatformMetric): boolean {
+  return Boolean(m.isLiveData || m.notFetched || m.liveError)
+}
+
 // Qualitative posting-strategy advice per platform, grounded in the real
 // weekly schedule (see data/schedule.ts) — this is workflow guidance, not a
 // claim about measured analytics. Combined below with real, data-driven
@@ -27,6 +37,16 @@ export function buildFocusActions(
     const quota = quotas[m.id] ?? DEFAULT_QUOTAS[m.id]
     const posted = postedThisWeek[m.id] ?? 0
     const strategy = STRATEGY_NOTES[m.id]
+
+    if (m.notFetched) {
+      return {
+        platform: m.id,
+        action: strategy ?? `Click "Fetch now" on ${m.name}'s Dashboard card to pull real numbers.`,
+        reason: strategy
+          ? `Connected, but not fetched yet — this is workflow strategy rather than a signal from your real ${m.name} account.`
+          : `Connected, but not fetched yet — this card is still showing mock data until you refresh it.`,
+      }
+    }
 
     if (!m.isLiveData) {
       return {
@@ -87,13 +107,24 @@ export function buildGrowthInsights(metrics: PlatformMetric[]): GrowthInsight[] 
     }
   }
 
-  const notConnected = metrics.filter((m) => !m.isLiveData)
+  const notConnected = metrics.filter((m) => !isConnectedPlatform(m))
   if (notConnected.length > 0) {
     insights.push({
       id: 'insight-not-connected',
       platform: 'cross-platform',
       title: `${notConnected.length} platform${notConnected.length === 1 ? '' : 's'} still showing mock data`,
       detail: `Connect ${notConnected.map((m) => m.name).join(', ')} in Settings to replace ${notConnected.length === 1 ? 'it' : 'them'} with real growth insights.`,
+      impact: 'medium',
+    })
+  }
+
+  const notFetched = metrics.filter((m) => m.notFetched)
+  if (notFetched.length > 0) {
+    insights.push({
+      id: 'insight-not-fetched',
+      platform: 'cross-platform',
+      title: `${notFetched.length} connected platform${notFetched.length === 1 ? '' : 's'} not fetched yet`,
+      detail: `${notFetched.map((m) => m.name).join(', ')} ${notFetched.length === 1 ? 'is' : 'are'} connected but still showing mock data — click "Fetch now" on ${notFetched.length === 1 ? 'its' : 'their'} Dashboard card to pull real numbers.`,
       impact: 'medium',
     })
   }
@@ -123,6 +154,7 @@ export interface WeeklyReport {
 }
 
 export function buildWeeklyReport(metrics: PlatformMetric[], entries: CalendarEntry[], anchor: Date): WeeklyReport {
+  const reallyConnected = metrics.filter(isConnectedPlatform)
   const connected = metrics.filter((m) => m.isLiveData)
   const withHistory = connected.filter((m) => m.hasGrowthHistory)
   const totalGrowth = withHistory.reduce((sum, m) => sum + m.weeklyGrowth, 0)
@@ -131,11 +163,11 @@ export function buildWeeklyReport(metrics: PlatformMetric[], entries: CalendarEn
   const behindPace = connected.filter((m) => m.status === 'bad').length
 
   let summary: string
-  if (connected.length === 0) {
+  if (reallyConnected.length === 0) {
     summary =
       'No platforms are connected yet, so everything below is mock data. Connect at least one platform in Settings to start seeing a real weekly report.'
   } else if (withHistory.length === 0) {
-    summary = `${connected.length} platform${connected.length === 1 ? ' is' : 's are'} connected, but there isn't a week of follower history yet — real growth numbers will appear here in a few days. In the meantime, you've posted ${totalPosted} time${totalPosted === 1 ? '' : 's'} across all platforms this week.`
+    summary = `${reallyConnected.length} platform${reallyConnected.length === 1 ? ' is' : 's are'} connected, but there isn't a week of follower history yet — real growth numbers will appear here in a few days${connected.length < reallyConnected.length ? ' once fetched' : ''}. In the meantime, you've posted ${totalPosted} time${totalPosted === 1 ? '' : 's'} across all platforms this week.`
   } else {
     const leader = [...withHistory].sort((a, b) => b.weeklyGrowthPct - a.weeklyGrowthPct)[0]
     summary = `${leader.name} is leading growth this week at ${leader.weeklyGrowthPct >= 0 ? '+' : ''}${leader.weeklyGrowthPct}%. ${
@@ -155,8 +187,8 @@ export function buildWeeklyReport(metrics: PlatformMetric[], entries: CalendarEn
       },
       {
         label: 'Platforms connected',
-        value: `${connected.length} of ${metrics.length}`,
-        trend: connected.length > 0 ? 'up' : 'down',
+        value: `${reallyConnected.length} of ${metrics.length}`,
+        trend: reallyConnected.length > 0 ? 'up' : 'down',
       },
       {
         label: 'Posts published this week',

@@ -45,8 +45,14 @@ export function Dashboard() {
   const mainMetrics = metrics.filter((m) => m.lane === 'main')
   const clipsMetrics = metrics.filter((m) => m.lane === 'clips')
 
-  const totalFollowers = metrics.reduce((sum, m) => sum + m.followers, 0)
-  const totalWeeklyGrowth = metrics.reduce((sum, m) => sum + m.weeklyGrowth, 0)
+  // Only real, connected platforms count toward the headline totals — mixing
+  // in mock followers from platforms that aren't connected/fetched yet would
+  // make this the least honest number on the page, which defeats the point
+  // of everything else here being labeled real vs. mock so carefully.
+  const connectedMetrics = metrics.filter((m) => m.isLiveData)
+  const totalFollowers = connectedMetrics.reduce((sum, m) => sum + m.followers, 0)
+  const growthKnownMetrics = connectedMetrics.filter((m) => m.hasGrowthHistory)
+  const totalWeeklyGrowth = growthKnownMetrics.reduce((sum, m) => sum + m.weeklyGrowth, 0)
   const onTrackCount = metrics.filter((m) => m.status === 'good').length
   const topFocus = useMemo(() => buildFocusActions(metrics, entries, quotas, anchor)[0], [metrics, entries, quotas, anchor])
 
@@ -63,12 +69,25 @@ export function Dashboard() {
             <Users size={14} /> Total Audience
           </div>
           <p className="text-2xl font-bold text-white">{formatNumber(totalFollowers)}</p>
+          <p className="text-[11px] text-gray-500 mt-0.5">
+            {connectedMetrics.length} of {metrics.length} platforms connected
+          </p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-gray-400 text-xs mb-2">
             <TrendingUp size={14} /> Weekly Growth
           </div>
-          <p className="text-2xl font-bold text-status-good">+{formatNumber(totalWeeklyGrowth)}</p>
+          {growthKnownMetrics.length > 0 ? (
+            <p className="text-2xl font-bold text-status-good">
+              {totalWeeklyGrowth >= 0 ? '+' : ''}
+              {formatNumber(totalWeeklyGrowth)}
+            </p>
+          ) : (
+            <p className="text-sm font-medium text-gray-500 mt-1.5">Gathering history</p>
+          )}
+          <p className="text-[11px] text-gray-500 mt-0.5">
+            {growthKnownMetrics.length} of {connectedMetrics.length} connected platforms
+          </p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center gap-2 text-gray-400 text-xs mb-2">

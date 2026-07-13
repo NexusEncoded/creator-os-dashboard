@@ -2,6 +2,14 @@ import type { AnalyticsInsight, CalendarEntry, ContentPillarId, PlatformId, Plat
 import { CONTENT_PILLARS } from '../data/pillars'
 import { DEFAULT_QUOTAS, countPostedThisWeek, type Quota } from './quotaService'
 
+// "isLiveData" only means a real fetch has actually succeeded — Apify-backed
+// platforms (TikTok/Instagram) can be genuinely connected (a username saved)
+// but still waiting on an explicit refresh, which is meaningfully different
+// from never having been connected at all.
+function isConnectedPlatform(m: PlatformMetric): boolean {
+  return Boolean(m.isLiveData || m.notFetched || m.liveError)
+}
+
 export interface PillarFrequencyRow {
   pillar: ContentPillarId
   lane: 'main' | 'clips'
@@ -68,7 +76,7 @@ export function buildPlatformSnapshot(metrics: PlatformMetric[]): PlatformSnapsh
       id: m.id,
       name: m.name,
       isLiveData: Boolean(m.isLiveData),
-      metricLabel: m.isLiveData ? m.viewsLabel : 'Not connected — mock data',
+      metricLabel: m.isLiveData ? m.viewsLabel : m.notFetched ? 'Connected — not fetched yet' : 'Not connected — mock data',
       metricValue: m.totalViews,
     }))
 }
@@ -133,13 +141,24 @@ export function buildAnalyticsInsights(
     })
   }
 
-  const notConnected = metrics.filter((m) => !m.isLiveData)
+  const notConnected = metrics.filter((m) => !isConnectedPlatform(m))
   if (notConnected.length > 0) {
     insights.push({
       id: 'an-not-connected',
       category: 'Opportunity',
       title: `${notConnected.length} platform${notConnected.length === 1 ? '' : 's'} not connected yet`,
       detail: `Connect ${notConnected.map((m) => m.name).join(', ')} in Settings to bring real activity data into this page.`,
+      sentiment: 'neutral',
+    })
+  }
+
+  const notFetched = metrics.filter((m) => m.notFetched)
+  if (notFetched.length > 0) {
+    insights.push({
+      id: 'an-not-fetched',
+      category: 'Opportunity',
+      title: `${notFetched.length} connected platform${notFetched.length === 1 ? '' : 's'} not fetched yet`,
+      detail: `${notFetched.map((m) => m.name).join(', ')} ${notFetched.length === 1 ? 'is' : 'are'} connected but still showing mock data — fetch ${notFetched.length === 1 ? 'it' : 'them'} from the Dashboard to bring real activity data into this page.`,
       sentiment: 'neutral',
     })
   }
