@@ -17,6 +17,7 @@ import { PageHeader } from '../components/ui/PageHeader'
 import { Card } from '../components/ui/Card'
 import { ProgressBar } from '../components/ui/ProgressBar'
 import { CalendarEntryModal } from '../components/CalendarEntryModal'
+import { ChecklistCard } from '../components/ChecklistCard'
 import { PlatformIcon } from '../components/ui/PlatformIcon'
 import { useServerStorage } from '../hooks/useServerStorage'
 import type { CalendarEntry, CalendarStatus, ContentPillarId, PlatformId, TaskItem } from '../types'
@@ -79,49 +80,6 @@ function getMonthGridWeeks(anchor: Date): Date[] {
   return weeks
 }
 
-function ChecklistCard({
-  items,
-  onToggle,
-  onRemoveCustom,
-}: {
-  items: TaskItem[]
-  onToggle: (id: string) => void
-  onRemoveCustom?: (id: string) => void
-}) {
-  return (
-    <Card className="divide-y divide-base-border">
-      {items.map((item) => (
-        <div key={item.id} className="flex items-center gap-3 px-5 py-3.5">
-          <button
-            onClick={() => onToggle(item.id)}
-            className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-smooth ${
-              item.done ? 'bg-accent border-accent' : 'border-gray-600'
-            }`}
-          >
-            {item.done && <Check size={14} className="text-white" />}
-          </button>
-          <div className="flex-1 min-w-0">
-            <p className={`text-sm ${item.done ? 'text-gray-500 line-through' : 'text-gray-100'}`}>{item.label}</p>
-          </div>
-          {item.platform && (
-            <span className="text-gray-500 flex-shrink-0">
-              <PlatformIcon platform={item.platform} size={16} />
-            </span>
-          )}
-          {item.custom && onRemoveCustom && (
-            <button
-              onClick={() => onRemoveCustom(item.id)}
-              className="text-gray-600 hover:text-status-bad transition-smooth flex-shrink-0"
-            >
-              <Trash2 size={15} />
-            </button>
-          )}
-        </div>
-      ))}
-      {items.length === 0 && <p className="px-5 py-6 text-sm text-gray-500 text-center">No tasks for this day yet.</p>}
-    </Card>
-  )
-}
 
 function ContentRow({
   item,
@@ -188,6 +146,10 @@ export function CalendarPage() {
   const [customTasks, setCustomTasks] = useServerStorage<CustomTask[]>('creator-os-custom-tasks', [])
   const [completions, setCompletions] = useServerStorage<Record<string, Record<string, boolean>>>(
     'creator-os-task-completions',
+    {},
+  )
+  const [taskNotes, setTaskNotes] = useServerStorage<Record<string, Record<string, string>>>(
+    'creator-os-task-notes',
     {},
   )
   const [recurringSchedule] = useServerStorage<ScheduleTemplate[]>(RECURRING_SCHEDULE_KEY, getDefaultRecurringSchedule)
@@ -358,6 +320,15 @@ export function CalendarPage() {
     setCompletions((prev) => {
       const dayMap = { ...(prev[dateStr] ?? {}) }
       dayMap[taskId] = !dayMap[taskId]
+      return { ...prev, [dateStr]: dayMap }
+    })
+  }
+
+  function updateTaskNote(taskId: string, value: string) {
+    setTaskNotes((prev) => {
+      const dayMap = { ...(prev[dateStr] ?? {}) }
+      if (value) dayMap[taskId] = value
+      else delete dayMap[taskId]
       return { ...prev, [dateStr]: dayMap }
     })
   }
@@ -639,7 +610,13 @@ export function CalendarPage() {
           {checklist.length > 0 && (
             <div className="mb-6">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Other Tasks</p>
-              <ChecklistCard items={checklist} onToggle={toggleTask} onRemoveCustom={removeCustomTask} />
+              <ChecklistCard
+                items={checklist}
+                onToggle={toggleTask}
+                onRemoveCustom={removeCustomTask}
+                notes={taskNotes[dateStr] ?? {}}
+                onNoteChange={updateTaskNote}
+              />
             </div>
           )}
 
@@ -647,11 +624,21 @@ export function CalendarPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Pre-Stream Checklist</p>
-                <ChecklistCard items={streamChecklists.pre} onToggle={toggleTask} />
+                <ChecklistCard
+                  items={streamChecklists.pre}
+                  onToggle={toggleTask}
+                  notes={taskNotes[dateStr] ?? {}}
+                  onNoteChange={updateTaskNote}
+                />
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">Post-Stream Checklist</p>
-                <ChecklistCard items={streamChecklists.post} onToggle={toggleTask} />
+                <ChecklistCard
+                  items={streamChecklists.post}
+                  onToggle={toggleTask}
+                  notes={taskNotes[dateStr] ?? {}}
+                  onNoteChange={updateTaskNote}
+                />
               </div>
             </div>
           )}

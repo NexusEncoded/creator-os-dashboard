@@ -4,6 +4,7 @@ import { fetchAppData, pushAppData } from '../services/appDataService'
 
 function isEmpty<T>(value: T): boolean {
   if (Array.isArray(value)) return value.length === 0
+  if (value !== null && typeof value === 'object') return Object.keys(value as object).length === 0
   return value === null || value === undefined
 }
 
@@ -33,9 +34,16 @@ export function useServerStorage<T>(key: string, initialValue: T | (() => T)) {
     let cancelled = false
 
     function pull() {
+      // Render's free tier can take 15-30s to wake from a cold start, so this
+      // fetch can still be in flight after the user has already typed
+      // something new (e.g. a stream note). Snapshot the value here and skip
+      // adopting the server's response if a local edit landed in the
+      // meantime — otherwise the slow, stale GET silently clobbers it.
+      const snapshotAtStart = valueRef.current
       fetchAppData<T>(key).then((serverValue) => {
         if (cancelled) return
-        if (serverValue !== null && !isEmpty(serverValue)) {
+        const localChangedSinceFetch = valueRef.current !== snapshotAtStart
+        if (serverValue !== null && !isEmpty(serverValue) && !localChangedSinceFetch) {
           setValue(serverValue)
         }
         hydrated.current = true

@@ -23,6 +23,7 @@ const APP_DATA_KEYS = new Set([
   'creator-os-quotas',
   'creator-os-recurring-schedule',
   'creator-os-follower-history',
+  'creator-os-task-notes',
 ])
 
 // Twitch has one meaningful account per creator (no "clips" Twitch in the

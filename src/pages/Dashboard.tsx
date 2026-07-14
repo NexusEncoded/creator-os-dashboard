@@ -4,14 +4,14 @@ import { PageHeader } from '../components/ui/PageHeader'
 import { Card } from '../components/ui/Card'
 import { PlatformCard } from '../components/PlatformCard'
 import { QuotaTracker } from '../components/QuotaTracker'
+import { ChecklistCard } from '../components/ChecklistCard'
 import { getPlatformMetrics, getPlatformMetricsSync, refreshManualPlatform } from '../services/platformService'
 import { buildFocusActions } from '../services/growthService'
 import { buildChecklist, type CustomTask } from '../services/taskService'
 import { toDateStr } from '../services/calendarService'
 import { useServerStorage } from '../hooks/useServerStorage'
 import { QUOTAS_STORAGE_KEY, DEFAULT_QUOTAS, type Quota } from '../services/quotaService'
-import { PlatformIcon } from '../components/ui/PlatformIcon'
-import { Flame, Users, TrendingUp, CircleCheck, Check, ArrowRight } from 'lucide-react'
+import { Flame, Users, TrendingUp, CircleCheck, ArrowRight } from 'lucide-react'
 import type { CalendarEntry, PlatformId } from '../types'
 
 function formatNumber(n: number): string {
@@ -32,6 +32,10 @@ export function Dashboard() {
     'creator-os-task-completions',
     {},
   )
+  const [taskNotes, setTaskNotes] = useServerStorage<Record<string, Record<string, string>>>(
+    'creator-os-task-notes',
+    {},
+  )
   const anchor = useMemo(() => new Date(), [])
   const todayStr = toDateStr(anchor)
   const todayChecklist = useMemo(() => {
@@ -44,6 +48,15 @@ export function Dashboard() {
     setCompletions((prev) => {
       const dayMap = { ...(prev[todayStr] ?? {}) }
       dayMap[taskId] = !dayMap[taskId]
+      return { ...prev, [todayStr]: dayMap }
+    })
+  }
+
+  function updateTodayTaskNote(taskId: string, value: string) {
+    setTaskNotes((prev) => {
+      const dayMap = { ...(prev[todayStr] ?? {}) }
+      if (value) dayMap[taskId] = value
+      else delete dayMap[taskId]
       return { ...prev, [todayStr]: dayMap }
     })
   }
@@ -134,29 +147,12 @@ export function Dashboard() {
               Full day view <ArrowRight size={12} />
             </Link>
           </div>
-          <Card className="divide-y divide-base-border">
-            {todayChecklist.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 px-5 py-3.5">
-                <button
-                  onClick={() => toggleTodayTask(item.id)}
-                  className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-smooth ${
-                    item.done ? 'bg-accent border-accent' : 'border-gray-600'
-                  }`}
-                >
-                  {item.done && <Check size={14} className="text-white" />}
-                </button>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm ${item.done ? 'text-gray-500 line-through' : 'text-gray-100'}`}>{item.label}</p>
-                  {item.custom && <p className="text-[11px] text-gray-500">Custom task</p>}
-                </div>
-                {item.platform && (
-                  <span className="text-gray-500 flex-shrink-0">
-                    <PlatformIcon platform={item.platform} size={16} />
-                  </span>
-                )}
-              </div>
-            ))}
-          </Card>
+          <ChecklistCard
+            items={todayChecklist}
+            onToggle={toggleTodayTask}
+            notes={taskNotes[todayStr] ?? {}}
+            onNoteChange={updateTodayTaskNote}
+          />
         </div>
       )}
 
