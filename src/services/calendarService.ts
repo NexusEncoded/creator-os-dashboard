@@ -22,9 +22,18 @@ export function getWeekDates(weekStart: Date): Date[] {
  * (Twitch Tue/Thu/Sun, daily TikTok/clips, weekly YouTube, etc.) is
  * generated and appended. User edits/additions made afterward persist
  * independently since they live in the same flat array.
+ *
+ * Only ever auto-fills this week and next week — jumping further ahead
+ * (via the nav arrows or month view) shows an empty, unseeded week instead
+ * of silently pre-filling months of the calendar nobody asked for yet.
+ * Past weeks are unaffected by this cap; browsing history still seeds.
  */
 export function ensureWeekSeeded(all: CalendarEntry[], anchor: Date, templates?: ScheduleTemplate[]): CalendarEntry[] {
   const weekStart = getWeekStart(anchor)
+  const maxSeedableStart = getWeekStart(new Date())
+  maxSeedableStart.setDate(maxSeedableStart.getDate() + 7)
+  if (weekStart > maxSeedableStart) return all
+
   const weekDateStrs = getWeekDates(weekStart).map(toDateStr)
   const hasAny = all.some((e) => weekDateStrs.includes(e.date))
   if (hasAny) return all

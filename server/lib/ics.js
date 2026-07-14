@@ -42,6 +42,12 @@ export function buildIcsFeed(entries) {
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Creator OS//Content Calendar//EN', 'CALSCALE:GREGORIAN']
 
   for (const entry of entries) {
+    // Once something's posted, it's done — leaving it in the feed just
+    // clutters the device calendar it's synced to with events that already
+    // happened. The in-app Calendar still shows it (struck through) since
+    // that view reads straight from creator-os-calendar-v1, not this feed.
+    if (entry.status === 'posted') continue
+
     const durationMinutes = LIVE_CONTENT_TYPES.has((entry.contentType ?? '').toLowerCase()) ? 120 : 30
     const end = addMinutes(entry.date, entry.time, durationMinutes)
     const descriptionParts = [entry.contentType, entry.pillar, entry.notes].filter(Boolean)
