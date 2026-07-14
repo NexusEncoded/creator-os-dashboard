@@ -17,11 +17,22 @@ export function getWeekDates(weekStart: Date): Date[] {
 }
 
 /**
- * Ensures the week containing `anchor` has seeded schedule entries.
- * If no entries exist for any date in that week, the recurring template
- * (Twitch Tue/Thu/Sun, daily TikTok/clips, weekly YouTube, etc.) is
- * generated and appended. User edits/additions made afterward persist
- * independently since they live in the same flat array.
+ * Ensures every day in the week containing `anchor` that has no
+ * non-negotiable (recurring-schedule) entries yet gets that day's template
+ * slots generated and appended. This checks specifically for seed- entries,
+ * not "any entry at all" — a day with only manual extras on it still needs
+ * its non-negotiables filled in, and that's the correct behavior for
+ * something branded "non-negotiable": it should show up regardless of
+ * whatever else is or isn't on that day, including after Clear Day wipes it.
+ *
+ * This is a per-day gap-fill, not a per-week "seed once and never touch
+ * again" check. That distinction matters because a single manually-added
+ * extra on one day used to block the whole week's non-negotiables from
+ * ever generating, and because the current week (which resetWeeksToDefault
+ * deliberately never regenerates) could otherwise be stuck showing "Nothing
+ * fixed" on days added to the recurring schedule after that week first
+ * picked up entries. Seed ids are deterministic (date+platform+time), so
+ * re-running this never creates duplicates.
  *
  * Only ever auto-fills this week and next week — jumping further ahead
  * (via the nav arrows or month view) shows an empty, unseeded week instead
@@ -35,9 +46,15 @@ export function ensureWeekSeeded(all: CalendarEntry[], anchor: Date, templates?:
   if (weekStart > maxSeedableStart) return all
 
   const weekDateStrs = getWeekDates(weekStart).map(toDateStr)
-  const hasAny = all.some((e) => weekDateStrs.includes(e.date))
-  if (hasAny) return all
-  return [...all, ...generateWeekEntries(anchor, templates)]
+  const datesWithNonNegotiables = new Set(
+    all.filter((e) => weekDateStrs.includes(e.date) && e.id.startsWith('seed-')).map((e) => e.date),
+  )
+  const emptyDateStrs = weekDateStrs.filter((d) => !datesWithNonNegotiables.has(d))
+  if (emptyDateStrs.length === 0) return all
+
+  const generated = generateWeekEntries(anchor, templates).filter((e) => emptyDateStrs.includes(e.date))
+  if (generated.length === 0) return all
+  return [...all, ...generated]
 }
 
 export function entriesForDate(all: CalendarEntry[], dateStr: string): CalendarEntry[] {

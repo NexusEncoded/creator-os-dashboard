@@ -9,7 +9,10 @@ interface Props {
   initialDate: string
   entry: CalendarEntry | null
   onClose: () => void
-  onSave: (entry: CalendarEntry) => void
+  // Always an array — editing saves exactly one entry, but adding can save
+  // several at once (same clip, multiple platforms), each counted toward
+  // its own platform's quota independently since they're separate records.
+  onSave: (entries: CalendarEntry[]) => void
   onDelete?: (id: string) => void
 }
 
@@ -19,6 +22,7 @@ export function CalendarEntryModal({ initialDate, entry, onClose, onSave, onDele
   const [date, setDate] = useState(entry?.date ?? initialDate)
   const [time, setTime] = useState(entry?.time ?? '09:00')
   const [platform, setPlatform] = useState<PlatformId>(entry?.platform ?? 'main-tiktok')
+  const [platforms, setPlatforms] = useState<PlatformId[]>(entry ? [entry.platform] : ['main-tiktok'])
   const [pillar, setPillar] = useState<ContentPillarId>(entry?.pillar ?? 'story-reflection')
   const [contentType, setContentType] = useState(entry?.contentType ?? 'TikTok Video')
   const [title, setTitle] = useState(entry?.title ?? '')
@@ -26,19 +30,33 @@ export function CalendarEntryModal({ initialDate, entry, onClose, onSave, onDele
   const [notes, setNotes] = useState(entry?.notes ?? '')
   const ideasForPillar = PILLAR_IDEA_BANK[pillar] ?? []
 
+  function togglePlatform(id: PlatformId) {
+    setPlatforms((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]))
+  }
+
   function handleSave() {
     if (!title.trim()) return
-    onSave({
-      id: entry?.id ?? `entry-${Date.now()}-${Math.round(Math.random() * 10000)}`,
+    const base = {
       date,
       time,
-      platform,
       pillar,
       contentType,
       title: title.trim(),
       status,
       notes: notes.trim() || undefined,
-    })
+    }
+    if (entry) {
+      onSave([{ ...base, id: entry.id, platform }])
+      return
+    }
+    if (platforms.length === 0) return
+    onSave(
+      platforms.map((p) => ({
+        ...base,
+        id: `entry-${Date.now()}-${Math.round(Math.random() * 10000)}-${p}`,
+        platform: p,
+      })),
+    )
   }
 
   return (
@@ -83,7 +101,20 @@ export function CalendarEntryModal({ initialDate, entry, onClose, onSave, onDele
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Pillar</label>
+            <select
+              value={pillar}
+              onChange={(e) => setPillar(e.target.value as ContentPillarId)}
+              className="w-full bg-base-surface2 border border-base-border rounded-lg px-3 py-2 text-sm text-gray-100"
+            >
+              {CONTENT_PILLARS.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {entry ? (
             <div>
               <label className="block text-xs text-gray-400 mb-1">Platform</label>
               <select
@@ -96,19 +127,32 @@ export function CalendarEntryModal({ initialDate, entry, onClose, onSave, onDele
                 ))}
               </select>
             </div>
+          ) : (
             <div>
-              <label className="block text-xs text-gray-400 mb-1">Pillar</label>
-              <select
-                value={pillar}
-                onChange={(e) => setPillar(e.target.value as ContentPillarId)}
-                className="w-full bg-base-surface2 border border-base-border rounded-lg px-3 py-2 text-sm text-gray-100"
-              >
-                {CONTENT_PILLARS.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+              <label className="block text-xs text-gray-400 mb-1">
+                Platforms — pick every place this is posting
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {PLATFORM_METRICS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => togglePlatform(p.id)}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-smooth ${
+                      platforms.includes(p.id)
+                        ? 'bg-accent text-white'
+                        : 'bg-base-surface2 text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    {p.name}
+                  </button>
                 ))}
-              </select>
+              </div>
+              {platforms.length === 0 && (
+                <p className="text-[11px] text-status-bad mt-1">Pick at least one platform.</p>
+              )}
             </div>
-          </div>
+          )}
 
           {!entry && ideasForPillar.length > 0 && (
             <div>
@@ -121,7 +165,7 @@ export function CalendarEntryModal({ initialDate, entry, onClose, onSave, onDele
                     key={idea.title}
                     onClick={() => {
                       setTitle(idea.title)
-                      setPlatform(idea.platform)
+                      setPlatforms([idea.platform])
                       setContentType(idea.format)
                     }}
                     className={`px-2.5 py-1.5 rounded-lg text-xs text-left transition-smooth ${
@@ -192,9 +236,10 @@ export function CalendarEntryModal({ initialDate, entry, onClose, onSave, onDele
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent/90 transition-smooth"
+              disabled={!title.trim() || (!entry && platforms.length === 0)}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent/90 transition-smooth disabled:opacity-50"
             >
-              Save
+              {!entry && platforms.length > 1 ? `Save (${platforms.length} platforms)` : 'Save'}
             </button>
           </div>
         </div>

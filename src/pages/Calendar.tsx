@@ -199,10 +199,16 @@ export function CalendarPage() {
     return entries.filter((e) => e.date === ds).sort((a, b) => a.time.localeCompare(b.time))
   }
 
-  function handleSave(entry: CalendarEntry) {
+  // Always an array: editing passes one entry, adding can pass several at
+  // once (same clip logged to multiple platforms in one go).
+  function handleSave(newEntries: CalendarEntry[]) {
     setEntries((prev) => {
-      const exists = prev.some((e) => e.id === entry.id)
-      return exists ? prev.map((e) => (e.id === entry.id ? entry : e)) : [...prev, entry]
+      let result = prev
+      for (const entry of newEntries) {
+        const exists = result.some((e) => e.id === entry.id)
+        result = exists ? result.map((e) => (e.id === entry.id ? entry : e)) : [...result, entry]
+      }
+      return result
     })
     setModal(null)
   }
